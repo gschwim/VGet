@@ -31,16 +31,21 @@
           };
 
           # Python 3.11 environment
-          python311-dev = pkgs.mkShell {
+          python312-dev = pkgs.mkShell {
             buildInputs = with pkgs; [
-              python311
+              python312
               poetry
-              python311.pkgs.pip
-            ];
+              python312.pkgs.pip
+              poetry
+              ffmpeg
+              SDL2
+              SDL2_image
+              SDL2_ttf
+              SDL2_mixer            ];
             shellHook = ''
-              poetry env use ${pkgs.python311}/bin/python
+              poetry env use ${pkgs.python312}/bin/python
               eval $(poetry env activate)
-              echo "Python 3.11 environment activated"
+              echo "Python 3.12 environment activated"
             '';
           };
 
@@ -50,6 +55,12 @@
               python313
               python313.pkgs.pip
               poetry
+              ffmpeg
+              python313.pkgs.pyinstaller
+              SDL2
+              SDL2_image
+              SDL2_ttf
+              SDL2_mixer
             ];
             shellHook = ''
               poetry env use ${pkgs.python313}/bin/python
@@ -57,7 +68,20 @@
               echo "Python 3.13 environment activated"
             '';
           };
-          nodejs_22 = pkgs.mkShell {
+          vget = pkgs.mkShell {
+            buildInputs = with pkgs; [
+              python312
+              python312.pkgs.kivy
+              python312.pkgs.yt-dlp
+              python312.pkgs.pip
+              python312.pkgs.pyinstaller
+                          ];
+            shellHook = ''
+              # poetry env use ${pkgs.python313}/bin/python
+              # eval $(poetry env activate)
+              # echo "Python 3.13 environment activated"
+            '';
+          };          nodejs_22 = pkgs.mkShell {
             buildInputs = with pkgs; [
               nodejs_22  # Node.js 20 LTS
               pnpm       # Fast package manager for SvelteKit

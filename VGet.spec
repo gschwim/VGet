@@ -1,18 +1,16 @@
 # -*- mode: python ; coding: utf-8 -*-
-from kivy.deps import sdl2, glew
-datas = [Tree(p) for p in (sdl2.dep_bins + glew.dep_bins)]
 
 
 a = Analysis(
     ['src/vget/main.py'],
     pathex=[],
     binaries=[],
-    datas=datas,
+    datas=[],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=['_tkinter', 'Tkinter', 'enchant', 'twisted'],
     noarchive=False,
     optimize=0,
 )

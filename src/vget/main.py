@@ -62,6 +62,7 @@ class DownloadApp(BoxLayout):
         now = datetime.datetime.now()
         filename = now.strftime("%m%d-%H%M")
         output_template = os.path.join(downloads_path, f"{filename}.%(ext)s")
+        self.status_label.text = f'Preparing to download ...'
         
         # Define progress hook to update UI
         def progress_hook(d):
@@ -84,9 +85,9 @@ class DownloadApp(BoxLayout):
             ydl = yt_dlp.YoutubeDL(options)
             ydl.download([url])
         except yt_dlp.DownloadError as e:
-            self.update_status(f'Error: {e}')
+            self.update_status(f'Error: {type(e)} - {e}')
         except Exception as e:
-            self.update_status(f'Unexpected error: {e}')
+            self.update_status(f'Unexpected error: {type(e)} - {e}')
         finally:
             self.enable_button()
 
