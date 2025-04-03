@@ -1,3 +1,6 @@
+import os
+os.environ['KIVY_LOG_MODE'] = 'PYTHON'
+
 from kivy.config import Config
 Config.set('graphics', 'width', '600')
 Config.set('graphics', 'height', '200')
@@ -9,10 +12,13 @@ from kivy.uix.label import Label
 from kivy.uix.textinput import TextInput
 from kivy.uix.button import Button
 from kivy.clock import mainthread
+
 import threading
 import os
 import yt_dlp
 import datetime
+import sys
+
 
 class DownloadApp(BoxLayout):
     def __init__(self, **kwargs):
@@ -23,7 +29,7 @@ class DownloadApp(BoxLayout):
         
         # Instruction label
         self.add_widget(Label(text='Enter video URL:', size_hint_y=0.2))
-        
+
         # Text input for URL
         self.url_input = TextInput(multiline=False, size_hint_y=0.2)
         self.add_widget(self.url_input)
@@ -41,7 +47,7 @@ class DownloadApp(BoxLayout):
         """Initiate the download process when the button is pressed."""
         url = self.url_input.text.strip()
         if not url:
-            self.status_label.text = 'Please enter a URL'
+            self.status_label.text = f'Please enter a URL'
             return
         
         # Update UI to indicate download is starting
@@ -75,11 +81,12 @@ class DownloadApp(BoxLayout):
         # Configure yt-dlp options
         options = {
             'outtmpl': output_template,              # Output file template with MMDD-hhmm
-            'cookiesfrombrowser': ('chrome',),       # Use cookies from Chrome
+            # 'cookiesfrombrowser': ('chrome',),       # Use cookies from Chrome
             'progress_hooks': [progress_hook],       # Hook for progress updates
             'quiet': True,                           # Suppress console output
         }
-        
+        # ydl = yt_dlp.YoutubeDL(options)
+        # ydl.download([url])       
         # Perform the download
         try:
             ydl = yt_dlp.YoutubeDL(options)

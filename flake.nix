@@ -75,6 +75,7 @@
               python312.pkgs.yt-dlp
               python312.pkgs.pip
               python312.pkgs.pyinstaller
+              ffmpeg
                           ];
             shellHook = ''
               # poetry env use ${pkgs.python313}/bin/python
