@@ -1,7 +1,9 @@
 import 'dart:async';
 
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api.dart';
 import 'saver.dart';
@@ -10,6 +12,8 @@ void main() => runApp(const VGetApp());
 
 /// Default backend URL. Override in the UI (Settings) at runtime.
 const _defaultBackend = 'http://localhost:8077';
+const _prefBackend = 'backendUrl';
+const _prefDownloadDir = 'downloadDir';
 
 class VGetApp extends StatelessWidget {
   const VGetApp({super.key});
@@ -36,8 +40,10 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   final _urlCtrl = TextEditingController();
-  final _backendCtrl = TextEditingController(text: _defaultBackend);
-  late ApiClient _api = ApiClient(_defaultBackend);
+
+  String _backendUrl = _defaultBackend;
+  String? _downloadDir; // null => OS Downloads folder
+  late ApiClient _api = ApiClient(_backendUrl);
 
   Timer? _poll;
   JobStatus? _job;
@@ -45,10 +51,41 @@ class _HomePageState extends State<HomePage> {
   String? _message;
 
   @override
+  void initState() {
+    super.initState();
+    _loadSettings();
+  }
+
+  Future<void> _loadSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _backendUrl = prefs.getString(_prefBackend) ?? _defaultBackend;
+      _downloadDir = prefs.getString(_prefDownloadDir);
+      _api = ApiClient(_backendUrl);
+    });
+  }
+
+  Future<void> _saveSettings(String backendUrl, String? downloadDir) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_prefBackend, backendUrl);
+    if (downloadDir == null || downloadDir.isEmpty) {
+      await prefs.remove(_prefDownloadDir);
+    } else {
+      await prefs.setString(_prefDownloadDir, downloadDir);
+    }
+    setState(() {
+      _backendUrl = backendUrl;
+      _downloadDir = (downloadDir == null || downloadDir.isEmpty)
+          ? null
+          : downloadDir;
+      _api = ApiClient(_backendUrl);
+    });
+  }
+
+  @override
   void dispose() {
     _poll?.cancel();
     _urlCtrl.dispose();
-    _backendCtrl.dispose();
     super.dispose();
   }
 
@@ -60,7 +97,6 @@ class _HomePageState extends State<HomePage> {
       _busy = true;
       _job = null;
       _message = null;
-      _api = ApiClient(_backendCtrl.text.trim());
     });
 
     try {
@@ -98,7 +134,7 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _onFinished(JobStatus job) async {
     try {
-      final where = await saveResult(_api, job);
+      final where = await saveResult(_api, job, downloadDir: _downloadDir);
       setState(() {
         _busy = false;
         _message = kIsWeb ? where : 'Saved to: $where';
@@ -160,6 +196,14 @@ class _HomePageState extends State<HomePage> {
                     child: Text(_busy ? 'Working…' : 'Download'),
                   ),
                 ),
+                if (!kIsWeb) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    'Saving to: ${_downloadDir ?? 'Downloads folder'}',
+                    style: Theme.of(context).textTheme.bodySmall,
+                    textAlign: TextAlign.center,
+                  ),
+                ],
                 const SizedBox(height: 24),
                 if (job != null) ...[
                   LinearProgressIndicator(
@@ -174,14 +218,16 @@ class _HomePageState extends State<HomePage> {
                 if (_message != null) ...[
                   const SizedBox(height: 16),
                   Card(
-                    color: _message!.startsWith('Error')
+                    color: _message!.startsWith('Error') ||
+                            _message!.startsWith('Saved on server')
                         ? Theme.of(context).colorScheme.errorContainer
                         : Theme.of(context).colorScheme.secondaryContainer,
                     child: Padding(
                       padding: const EdgeInsets.all(12),
                       child: Row(
                         children: [
-                          Icon(_message!.startsWith('Error')
+                          Icon(_message!.startsWith('Error') ||
+                                  _message!.startsWith('Saved on server')
                               ? Icons.error_outline
                               : Icons.check_circle_outline),
                           const SizedBox(width: 8),
@@ -217,25 +263,106 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  void _openSettings() {
-    showDialog(
+  Future<void> _openSettings() async {
+    final result = await showDialog<({String backend, String? dir})>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Settings'),
-        content: TextField(
-          controller: _backendCtrl,
-          decoration: const InputDecoration(
-            labelText: 'Backend URL',
-            border: OutlineInputBorder(),
+      builder: (ctx) => _SettingsDialog(
+        backendUrl: _backendUrl,
+        downloadDir: _downloadDir,
+      ),
+    );
+    if (result != null) {
+      await _saveSettings(result.backend, result.dir);
+    }
+  }
+}
+
+/// Settings: backend URL + (desktop) download folder picker.
+class _SettingsDialog extends StatefulWidget {
+  final String backendUrl;
+  final String? downloadDir;
+  const _SettingsDialog({required this.backendUrl, this.downloadDir});
+
+  @override
+  State<_SettingsDialog> createState() => _SettingsDialogState();
+}
+
+class _SettingsDialogState extends State<_SettingsDialog> {
+  late final TextEditingController _backendCtrl =
+      TextEditingController(text: widget.backendUrl);
+  String? _dir;
+
+  @override
+  void initState() {
+    super.initState();
+    _dir = widget.downloadDir;
+  }
+
+  @override
+  void dispose() {
+    _backendCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickDir() async {
+    final path = await getDirectoryPath();
+    if (path != null) setState(() => _dir = path);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Settings'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          TextField(
+            controller: _backendCtrl,
+            decoration: const InputDecoration(
+              labelText: 'Backend URL',
+              border: OutlineInputBorder(),
+            ),
           ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Done'),
-          ),
+          if (!kIsWeb) ...[
+            const SizedBox(height: 20),
+            Text('Download folder',
+                style: Theme.of(context).textTheme.labelLarge),
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    _dir ?? 'Downloads folder (default)',
+                    style: Theme.of(context).textTheme.bodyMedium,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                TextButton(onPressed: _pickDir, child: const Text('Choose…')),
+                if (_dir != null)
+                  IconButton(
+                    tooltip: 'Reset to Downloads',
+                    icon: const Icon(Icons.close),
+                    onPressed: () => setState(() => _dir = null),
+                  ),
+              ],
+            ),
+          ],
         ],
       ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(
+            context,
+            (backend: _backendCtrl.text.trim(), dir: _dir),
+          ),
+          child: const Text('Save'),
+        ),
+      ],
     );
   }
 }
