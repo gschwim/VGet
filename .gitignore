@@ -1,4 +1,33 @@
-build/
-.direnv/
+# OS / editor
 .DS_Store
+*.swp
+.idea/
+.vscode/
+
+# Nix / direnv
+.direnv/
+result
+result-*
+
+# Python / backend
 __pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.env
+backend/.env
+
+# Flutter / Dart
+app/.dart_tool/
+app/.flutter-plugins
+app/.flutter-plugins-dependencies
+app/build/
+app/.pub-cache/
+app/flutter_*.log
+**/*.g.dart.bak
+
+# Runtime data
+work/
+downloads/
+*.log
