@@ -18,14 +18,48 @@ const _prefDownloadDir = 'downloadDir';
 class VGetApp extends StatelessWidget {
   const VGetApp({super.key});
 
+  // One Dark (Atom) palette
+  static const _bg = Color(0xFF282C34);
+  static const _bgDark = Color(0xFF21252B);
+  static const _fg = Color(0xFFABB2BF);
+  static const _blue = Color(0xFF61AFEF);
+  static const _purple = Color(0xFFC678DD);
+  static const _green = Color(0xFF98C379);
+  static const _red = Color(0xFFE06C75);
+  static const _grey = Color(0xFF5C6370);
+
   @override
   Widget build(BuildContext context) {
+    final scheme = ColorScheme.fromSeed(
+      seedColor: _blue,
+      brightness: Brightness.dark,
+    ).copyWith(
+      primary: _blue,
+      onPrimary: _bg,
+      secondary: _purple,
+      onSecondary: _bg,
+      surface: _bg,
+      onSurface: _fg,
+      error: _red,
+      onError: _bg,
+      surfaceContainerHighest: _bgDark,
+      secondaryContainer: const Color(0xFF2E3A2E), // success card (green-tinted)
+      onSecondaryContainer: _green,
+      errorContainer: const Color(0xFF3A2D30), // error card (red-tinted)
+      onErrorContainer: _red,
+      outline: _grey,
+    );
     return MaterialApp(
       title: 'VGet',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo),
         useMaterial3: true,
+        colorScheme: scheme,
+        scaffoldBackgroundColor: _bg,
+        appBarTheme: const AppBarTheme(
+          backgroundColor: _bgDark,
+          foregroundColor: _fg,
+        ),
       ),
       home: const HomePage(),
     );
@@ -205,7 +239,7 @@ class _HomePageState extends State<HomePage> {
                   ),
                 ],
                 const SizedBox(height: 24),
-                if (job != null) ...[
+                if (_busy && job != null) ...[
                   LinearProgressIndicator(
                     value: (job.status == 'downloading' && progress > 0)
                         ? progress
