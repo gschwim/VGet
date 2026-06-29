@@ -78,9 +78,9 @@
               ffmpeg
                           ];
             shellHook = ''
-              # poetry env use ${pkgs.python313}/bin/python
-              # eval $(poetry env activate)
-              # echo "Python 3.13 environment activated"
+              poetry env use ${pkgs.python312}/bin/python
+              eval $(poetry env activate)
+              echo "Python 3.12 environment activated"
             '';
           };          nodejs_22 = pkgs.mkShell {
             buildInputs = with pkgs; [

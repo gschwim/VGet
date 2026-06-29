@@ -30,6 +30,14 @@ class DownloadApp(BoxLayout):
         # Instruction label
         self.add_widget(Label(text='Enter video URL:', size_hint_y=0.2))
 
+        # output stderr if we're still using kivy
+        if 'kivy' in sys.stderr.__str__():
+            current_stderr = f'stderr: {sys.stderr.__str__()}'
+        else:
+            current_stderr = '-----'
+
+        self.add_widget(Label(text=current_stderr, size_hint_y=0.2))
+
         # Text input for URL
         self.url_input = TextInput(multiline=False, size_hint_y=0.2)
         self.add_widget(self.url_input)

@@ -21,4 +21,4 @@ requires = ["poetry-core>=2.0.0,<3.0.0"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.scripts]
-vget = "vget.main:main" 
+vget-gui = "vget.main:main" 
