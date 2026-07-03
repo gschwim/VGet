@@ -98,6 +98,7 @@ class _HomePageState extends State<HomePage> {
 
   String _backendUrl = _defaultBackend;
   String? _downloadDir; // null => OS Downloads folder
+  String? _defaultDownloadPath; // resolved OS Downloads folder, for display
   String _cookieBrowser = 'auto'; // glom cookies from this browser
   bool _cookiesSent = false; // whether the last job actually forwarded cookies
   late ApiClient _api = ApiClient(_backendUrl);
@@ -116,12 +117,20 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
+    final defaultPath = await defaultDownloadLocation();
     setState(() {
       _backendUrl = prefs.getString(_prefBackend) ?? _defaultBackend;
       _downloadDir = prefs.getString(_prefDownloadDir);
+      _defaultDownloadPath = defaultPath;
       _cookieBrowser = prefs.getString(_prefCookieBrowser) ?? 'auto';
       _api = ApiClient(_backendUrl);
     });
+  }
+
+  /// Human-friendly label for where files will be saved.
+  String _locationLabel() {
+    final path = _downloadDir ?? _defaultDownloadPath;
+    return path == null ? '~/Downloads' : prettyPath(path);
   }
 
   Future<void> _saveSettings(
@@ -296,7 +305,7 @@ class _HomePageState extends State<HomePage> {
                 if (!kIsWeb) ...[
                   const SizedBox(height: 8),
                   Text(
-                    'Saving to: ${_downloadDir ?? 'Downloads folder'}'
+                    'Saving to: ${_locationLabel()}'
                     '   •   Cookies: ${_cookieBrowserLabels[_cookieBrowser]}',
                     style: Theme.of(context).textTheme.bodySmall,
                     textAlign: TextAlign.center,
@@ -366,6 +375,7 @@ class _HomePageState extends State<HomePage> {
       builder: (ctx) => _SettingsDialog(
         backendUrl: _backendUrl,
         downloadDir: _downloadDir,
+        defaultDir: _defaultDownloadPath,
         cookieBrowser: _cookieBrowser,
       ),
     );
@@ -379,10 +389,12 @@ class _HomePageState extends State<HomePage> {
 class _SettingsDialog extends StatefulWidget {
   final String backendUrl;
   final String? downloadDir;
+  final String? defaultDir;
   final String cookieBrowser;
   const _SettingsDialog({
     required this.backendUrl,
     this.downloadDir,
+    this.defaultDir,
     required this.cookieBrowser,
   });
 
@@ -431,14 +443,18 @@ class _SettingsDialogState extends State<_SettingsDialog> {
           ),
           if (!kIsWeb) ...[
             const SizedBox(height: 20),
-            Text('Download folder',
+            Text('Download location…',
                 style: Theme.of(context).textTheme.labelLarge),
             const SizedBox(height: 4),
             Row(
               children: [
                 Expanded(
                   child: Text(
-                    _dir ?? 'Downloads folder (default)',
+                    _dir != null
+                        ? prettyPath(_dir!)
+                        : widget.defaultDir != null
+                            ? '${prettyPath(widget.defaultDir!)} (default)'
+                            : '~/Downloads (default)',
                     style: Theme.of(context).textTheme.bodyMedium,
                     overflow: TextOverflow.ellipsis,
                   ),

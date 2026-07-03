@@ -9,3 +9,7 @@ Future<String> saveResult(ApiClient api, JobStatus job,
   await launchUrl(api.fileUri(job.jobId), webOnlyWindowName: '_blank');
   return 'Started download in your browser';
 }
+
+Future<String?> defaultDownloadLocation() async => null;
+
+String prettyPath(String path) => path;

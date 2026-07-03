@@ -31,3 +31,22 @@ Future<String> saveResult(ApiClient api, JobStatus job,
   await file.writeAsBytes(resp.bodyBytes);
   return file.path;
 }
+
+/// The OS Downloads folder path (used when no custom folder is set), or null.
+Future<String?> defaultDownloadLocation() async {
+  try {
+    return (await getDownloadsDirectory())?.path;
+  } catch (_) {
+    return null;
+  }
+}
+
+/// Collapse a leading $HOME to '~' for display; otherwise return as-is.
+String prettyPath(String path) {
+  final home = Platform.environment['HOME'];
+  if (home != null && home.isNotEmpty && path.startsWith(home)) {
+    final rest = path.substring(home.length);
+    return rest.isEmpty ? '~' : '~$rest';
+  }
+  return path;
+}
