@@ -39,6 +39,9 @@ dependencies:
   url_launcher: ^6.3.2
   shared_preferences: ^2.5.5
   file_selector: ^1.1.0
+  sqlite3: ^2.9.4
+  sqlite3_flutter_libs: ^0.5.42
+  pointycastle: ^4.0.0
 
 dev_dependencies:
   flutter_test:

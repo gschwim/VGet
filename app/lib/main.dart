@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api.dart';
+import 'cookies.dart';
 import 'saver.dart';
 
 void main() => runApp(const VGetApp());
@@ -14,6 +15,15 @@ void main() => runApp(const VGetApp());
 const _defaultBackend = 'http://localhost:8077';
 const _prefBackend = 'backendUrl';
 const _prefDownloadDir = 'downloadDir';
+const _prefCookieBrowser = 'cookieBrowser';
+
+/// Browsers we can glom cookies from for authenticated downloads (desktop).
+const _cookieBrowsers = <String>['none', 'chrome', 'firefox'];
+const _cookieBrowserLabels = <String, String>{
+  'none': 'None (public only)',
+  'chrome': 'Chrome',
+  'firefox': 'Firefox',
+};
 
 class VGetApp extends StatelessWidget {
   const VGetApp({super.key});
@@ -77,6 +87,7 @@ class _HomePageState extends State<HomePage> {
 
   String _backendUrl = _defaultBackend;
   String? _downloadDir; // null => OS Downloads folder
+  String _cookieBrowser = 'none'; // glom cookies from this browser
   late ApiClient _api = ApiClient(_backendUrl);
 
   Timer? _poll;
@@ -95,13 +106,16 @@ class _HomePageState extends State<HomePage> {
     setState(() {
       _backendUrl = prefs.getString(_prefBackend) ?? _defaultBackend;
       _downloadDir = prefs.getString(_prefDownloadDir);
+      _cookieBrowser = prefs.getString(_prefCookieBrowser) ?? 'none';
       _api = ApiClient(_backendUrl);
     });
   }
 
-  Future<void> _saveSettings(String backendUrl, String? downloadDir) async {
+  Future<void> _saveSettings(
+      String backendUrl, String? downloadDir, String cookieBrowser) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_prefBackend, backendUrl);
+    await prefs.setString(_prefCookieBrowser, cookieBrowser);
     if (downloadDir == null || downloadDir.isEmpty) {
       await prefs.remove(_prefDownloadDir);
     } else {
@@ -112,6 +126,7 @@ class _HomePageState extends State<HomePage> {
       _downloadDir = (downloadDir == null || downloadDir.isEmpty)
           ? null
           : downloadDir;
+      _cookieBrowser = cookieBrowser;
       _api = ApiClient(_backendUrl);
     });
   }
@@ -134,7 +149,11 @@ class _HomePageState extends State<HomePage> {
     });
 
     try {
-      final id = await _api.createJob(url);
+      String? cookies;
+      if (!kIsWeb && _cookieBrowser != 'none') {
+        cookies = await extractCookies(browser: _cookieBrowser, url: url);
+      }
+      final id = await _api.createJob(url, cookies: cookies);
       _poll = Timer.periodic(const Duration(milliseconds: 800), (_) async {
         try {
           final job = await _api.getJob(id);
@@ -233,7 +252,8 @@ class _HomePageState extends State<HomePage> {
                 if (!kIsWeb) ...[
                   const SizedBox(height: 8),
                   Text(
-                    'Saving to: ${_downloadDir ?? 'Downloads folder'}',
+                    'Saving to: ${_downloadDir ?? 'Downloads folder'}'
+                    '   •   Cookies: ${_cookieBrowserLabels[_cookieBrowser]}',
                     style: Theme.of(context).textTheme.bodySmall,
                     textAlign: TextAlign.center,
                   ),
@@ -298,15 +318,17 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _openSettings() async {
-    final result = await showDialog<({String backend, String? dir})>(
+    final result =
+        await showDialog<({String backend, String? dir, String cookieBrowser})>(
       context: context,
       builder: (ctx) => _SettingsDialog(
         backendUrl: _backendUrl,
         downloadDir: _downloadDir,
+        cookieBrowser: _cookieBrowser,
       ),
     );
     if (result != null) {
-      await _saveSettings(result.backend, result.dir);
+      await _saveSettings(result.backend, result.dir, result.cookieBrowser);
     }
   }
 }
@@ -315,7 +337,12 @@ class _HomePageState extends State<HomePage> {
 class _SettingsDialog extends StatefulWidget {
   final String backendUrl;
   final String? downloadDir;
-  const _SettingsDialog({required this.backendUrl, this.downloadDir});
+  final String cookieBrowser;
+  const _SettingsDialog({
+    required this.backendUrl,
+    this.downloadDir,
+    required this.cookieBrowser,
+  });
 
   @override
   State<_SettingsDialog> createState() => _SettingsDialogState();
@@ -325,11 +352,13 @@ class _SettingsDialogState extends State<_SettingsDialog> {
   late final TextEditingController _backendCtrl =
       TextEditingController(text: widget.backendUrl);
   String? _dir;
+  late String _cookieBrowser;
 
   @override
   void initState() {
     super.initState();
     _dir = widget.downloadDir;
+    _cookieBrowser = widget.cookieBrowser;
   }
 
   @override
@@ -381,6 +410,28 @@ class _SettingsDialogState extends State<_SettingsDialog> {
                   ),
               ],
             ),
+            const SizedBox(height: 20),
+            Text('Use cookies from',
+                style: Theme.of(context).textTheme.labelLarge),
+            const SizedBox(height: 4),
+            DropdownButtonFormField<String>(
+              initialValue: _cookieBrowser,
+              decoration: const InputDecoration(border: OutlineInputBorder()),
+              items: [
+                for (final b in _cookieBrowsers)
+                  DropdownMenuItem(
+                      value: b, child: Text(_cookieBrowserLabels[b]!)),
+              ],
+              onChanged: (v) =>
+                  setState(() => _cookieBrowser = v ?? 'none'),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'For private posts (Instagram, X, Facebook), pick the browser '
+              "you're logged in with. Cookies are sent only with your download "
+              'and never stored on the server.',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
           ],
         ],
       ),
@@ -392,7 +443,11 @@ class _SettingsDialogState extends State<_SettingsDialog> {
         FilledButton(
           onPressed: () => Navigator.pop(
             context,
-            (backend: _backendCtrl.text.trim(), dir: _dir),
+            (
+              backend: _backendCtrl.text.trim(),
+              dir: _dir,
+              cookieBrowser: _cookieBrowser,
+            ),
           ),
           child: const Text('Save'),
         ),
