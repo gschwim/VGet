@@ -94,6 +94,7 @@ class _HomePageState extends State<HomePage> {
   JobStatus? _job;
   bool _busy = false;
   String? _message;
+  bool _messageIsError = false;
 
   @override
   void initState() {
@@ -146,6 +147,7 @@ class _HomePageState extends State<HomePage> {
       _busy = true;
       _job = null;
       _message = null;
+      _messageIsError = false;
     });
 
     try {
@@ -165,7 +167,8 @@ class _HomePageState extends State<HomePage> {
             } else {
               setState(() {
                 _busy = false;
-                _message = 'Error: ${job.error ?? 'download failed'}';
+                _message = _friendlyError(job.error);
+                _messageIsError = true;
               });
             }
           }
@@ -174,6 +177,7 @@ class _HomePageState extends State<HomePage> {
           setState(() {
             _busy = false;
             _message = 'Error: $e';
+            _messageIsError = true;
           });
         }
       });
@@ -181,8 +185,28 @@ class _HomePageState extends State<HomePage> {
       setState(() {
         _busy = false;
         _message = 'Error: $e';
+        _messageIsError = true;
       });
     }
+  }
+
+  /// Turn a raw yt-dlp error into a hint when it looks like the content needed
+  /// authentication but no cookie source was selected.
+  String _friendlyError(String? err) {
+    final e = err ?? 'download failed';
+    final l = e.toLowerCase();
+    final looksAuth = l.contains('empty media response') ||
+        l.contains('login required') ||
+        l.contains('log in') ||
+        l.contains('cookies') ||
+        l.contains('private') ||
+        l.contains('rate-limit');
+    if (looksAuth && (kIsWeb || _cookieBrowser == 'none')) {
+      return 'This looks like private or login-required content. Open Settings '
+          "(⚙) and set “Use cookies from” to the browser you're logged in with "
+          '(e.g. Chrome), then try again.';
+    }
+    return 'Error: $e';
   }
 
   Future<void> _onFinished(JobStatus job) async {
@@ -191,11 +215,13 @@ class _HomePageState extends State<HomePage> {
       setState(() {
         _busy = false;
         _message = kIsWeb ? where : 'Saved to: $where';
+        _messageIsError = false;
       });
     } catch (e) {
       setState(() {
         _busy = false;
         _message = 'Saved on server, but local save failed: $e';
+        _messageIsError = true;
       });
     }
   }
@@ -272,16 +298,14 @@ class _HomePageState extends State<HomePage> {
                 if (_message != null) ...[
                   const SizedBox(height: 16),
                   Card(
-                    color: _message!.startsWith('Error') ||
-                            _message!.startsWith('Saved on server')
+                    color: _messageIsError
                         ? Theme.of(context).colorScheme.errorContainer
                         : Theme.of(context).colorScheme.secondaryContainer,
                     child: Padding(
                       padding: const EdgeInsets.all(12),
                       child: Row(
                         children: [
-                          Icon(_message!.startsWith('Error') ||
-                                  _message!.startsWith('Saved on server')
+                          Icon(_messageIsError
                               ? Icons.error_outline
                               : Icons.check_circle_outline),
                           const SizedBox(width: 8),
