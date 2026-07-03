@@ -5,9 +5,22 @@ import 'dart:typed_data';
 import 'package:pointycastle/export.dart';
 import 'package:sqlite3/sqlite3.dart';
 
+/// Chromium-family browsers: id -> [support-dir relative path, Keychain service].
+/// They share the same cookie DB layout + AES-CBC encryption scheme; only the
+/// on-disk path and the Keychain item name differ.
+const _chromium = <String, List<String>>{
+  'chrome': ['Google/Chrome', 'Chrome Safe Storage'],
+  'brave': ['BraveSoftware/Brave-Browser', 'Brave Safe Storage'],
+  'edge': ['Microsoft Edge', 'Microsoft Edge Safe Storage'],
+};
+
+/// Browsers probed, in order, for 'auto' mode.
+const _autoOrder = <String>['chrome', 'brave', 'edge', 'firefox'];
+
 /// Extract cookies for [url]'s registrable domain from [browser]
-/// ('chrome' | 'firefox') and return them as a Netscape cookies.txt string,
-/// or null if unsupported / none found. Best-effort: returns null on any error.
+/// ('auto' | 'chrome' | 'brave' | 'edge' | 'firefox') and return them as a
+/// Netscape cookies.txt string, or null if none found. Best-effort: returns
+/// null on any error. In 'auto' mode, the first browser with cookies wins.
 Future<String?> extractCookies({
   required String browser,
   required String url,
@@ -17,19 +30,27 @@ Future<String?> extractCookies({
     if (host.isEmpty) return null;
     final domain = _registrableDomain(host);
 
-    final List<_Cookie> cookies;
-    switch (browser) {
-      case 'chrome':
-        cookies = await _chromeCookies(domain);
-      case 'firefox':
-        cookies = _firefoxCookies(domain);
-      default:
-        return null;
+    if (browser == 'auto') {
+      for (final b in _autoOrder) {
+        final c = await _extractOne(b, domain);
+        if (c.isNotEmpty) return _toNetscape(c);
+      }
+      return null;
     }
-    return cookies.isEmpty ? null : _toNetscape(cookies);
+    final c = await _extractOne(browser, domain);
+    return c.isEmpty ? null : _toNetscape(c);
   } catch (_) {
     return null;
   }
+}
+
+Future<List<_Cookie>> _extractOne(String browser, String domain) async {
+  if (browser == 'firefox') return _firefoxCookies(domain);
+  final spec = _chromium[browser];
+  final home = Platform.environment['HOME'];
+  if (spec == null || home == null) return [];
+  return _chromiumCookies(
+      '$home/Library/Application Support/${spec[0]}', spec[1], domain);
 }
 
 class _Cookie {
@@ -95,14 +116,13 @@ Uint8List _hexToBytes(String hex) {
   return out;
 }
 
-// --- Chrome ---------------------------------------------------------------
+// --- Chromium (Chrome / Brave / Edge) -------------------------------------
 
-Future<List<_Cookie>> _chromeCookies(String domain) async {
-  final home = Platform.environment['HOME'];
-  if (home == null) return [];
-  final base = '$home/Library/Application Support/Google/Chrome';
-
-  String dbPath = '';
+Future<List<_Cookie>> _chromiumCookies(
+    String base, String keychainService, String domain) async {
+  // Find the cookie DB first; if the browser isn't installed we return early
+  // WITHOUT touching the Keychain (so 'auto' won't prompt for absent browsers).
+  var dbPath = '';
   for (final profile in ['Default', 'Profile 1', 'Profile 2', 'Profile 3']) {
     for (final rel in ['Network/Cookies', 'Cookies']) {
       final p = '$base/$profile/$rel';
@@ -115,7 +135,7 @@ Future<List<_Cookie>> _chromeCookies(String domain) async {
   }
   if (dbPath.isEmpty) return [];
 
-  final key = await _chromeKey();
+  final key = await _chromiumKey(keychainService);
   if (key == null) return [];
 
   final tmp = _copyDb(dbPath);
@@ -136,7 +156,7 @@ Future<List<_Cookie>> _chromeCookies(String domain) async {
       var value = (r['value'] as String?) ?? '';
       final encHex = r['enc_hex'] as String?;
       if (value.isEmpty && encHex != null && encHex.isNotEmpty) {
-        final dec = _decryptChrome(_hexToBytes(encHex), key);
+        final dec = _decryptChromium(_hexToBytes(encHex), key);
         if (dec == null) continue;
         value = dec;
       }
@@ -159,11 +179,11 @@ Future<List<_Cookie>> _chromeCookies(String domain) async {
   return out;
 }
 
-/// Derive Chrome's AES key from the "Chrome Safe Storage" password in the
+/// Derive a Chromium browser's AES key from its "Safe Storage" password in the
 /// macOS Keychain (PBKDF2-HMAC-SHA1, salt "saltysalt", 1003 iters, 16 bytes).
-Future<Uint8List?> _chromeKey() async {
+Future<Uint8List?> _chromiumKey(String service) async {
   final res = await Process.run(
-      'security', ['find-generic-password', '-w', '-s', 'Chrome Safe Storage']);
+      '/usr/bin/security', ['find-generic-password', '-w', '-s', service]);
   if (res.exitCode != 0) return null;
   final password = (res.stdout as String).trim();
   if (password.isEmpty) return null;
@@ -174,7 +194,7 @@ Future<Uint8List?> _chromeKey() async {
   return derivator.process(Uint8List.fromList(utf8.encode(password)));
 }
 
-String? _decryptChrome(Uint8List enc, Uint8List key) {
+String? _decryptChromium(Uint8List enc, Uint8List key) {
   if (enc.length <= 3) return null;
   final data = enc.sublist(3); // strip "v10"/"v11" prefix
   if (data.isEmpty || data.length % 16 != 0) return null;
@@ -194,7 +214,7 @@ String? _decryptChrome(Uint8List enc, Uint8List key) {
   try {
     return utf8.decode(plain);
   } catch (_) {
-    // Newer Chrome prepends a 32-byte SHA256 domain hash before the value.
+    // Newer Chromium prepends a 32-byte SHA256 domain hash before the value.
     if (plain.length > 32) {
       try {
         return utf8.decode(plain.sublist(32));

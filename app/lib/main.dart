@@ -18,11 +18,22 @@ const _prefDownloadDir = 'downloadDir';
 const _prefCookieBrowser = 'cookieBrowser';
 
 /// Browsers we can glom cookies from for authenticated downloads (desktop).
-const _cookieBrowsers = <String>['none', 'chrome', 'firefox'];
+/// 'auto' probes each installed browser and uses the first with cookies.
+const _cookieBrowsers = <String>[
+  'none',
+  'auto',
+  'chrome',
+  'firefox',
+  'brave',
+  'edge',
+];
 const _cookieBrowserLabels = <String, String>{
   'none': 'None (public only)',
+  'auto': 'Auto-detect',
   'chrome': 'Chrome',
   'firefox': 'Firefox',
+  'brave': 'Brave',
+  'edge': 'Edge',
 };
 
 class VGetApp extends StatelessWidget {
@@ -87,7 +98,8 @@ class _HomePageState extends State<HomePage> {
 
   String _backendUrl = _defaultBackend;
   String? _downloadDir; // null => OS Downloads folder
-  String _cookieBrowser = 'none'; // glom cookies from this browser
+  String _cookieBrowser = 'auto'; // glom cookies from this browser
+  bool _cookiesSent = false; // whether the last job actually forwarded cookies
   late ApiClient _api = ApiClient(_backendUrl);
 
   Timer? _poll;
@@ -107,7 +119,7 @@ class _HomePageState extends State<HomePage> {
     setState(() {
       _backendUrl = prefs.getString(_prefBackend) ?? _defaultBackend;
       _downloadDir = prefs.getString(_prefDownloadDir);
-      _cookieBrowser = prefs.getString(_prefCookieBrowser) ?? 'none';
+      _cookieBrowser = prefs.getString(_prefCookieBrowser) ?? 'auto';
       _api = ApiClient(_backendUrl);
     });
   }
@@ -155,6 +167,7 @@ class _HomePageState extends State<HomePage> {
       if (!kIsWeb && _cookieBrowser != 'none') {
         cookies = await extractCookies(browser: _cookieBrowser, url: url);
       }
+      _cookiesSent = cookies != null && cookies.isNotEmpty;
       final id = await _api.createJob(url, cookies: cookies);
       _poll = Timer.periodic(const Duration(milliseconds: 800), (_) async {
         try {
@@ -201,10 +214,15 @@ class _HomePageState extends State<HomePage> {
         l.contains('cookies') ||
         l.contains('private') ||
         l.contains('rate-limit');
-    if (looksAuth && (kIsWeb || _cookieBrowser == 'none')) {
-      return 'This looks like private or login-required content. Open Settings '
-          "(⚙) and set “Use cookies from” to the browser you're logged in with "
-          '(e.g. Chrome), then try again.';
+    if (looksAuth && !_cookiesSent) {
+      if (kIsWeb) {
+        return 'This content requires you to be logged in. Authenticated '
+            'downloads are supported in the desktop app.';
+      }
+      return 'This looks like private or login-required content, and no usable '
+          'cookies were found. In Settings (⚙), set “Use cookies from” to the '
+          "browser you're logged into this site with (Auto tries all), and make "
+          'sure you are logged in there.';
     }
     return 'Error: $e';
   }
@@ -451,9 +469,10 @@ class _SettingsDialogState extends State<_SettingsDialog> {
             ),
             const SizedBox(height: 4),
             Text(
-              'For private posts (Instagram, X, Facebook), pick the browser '
-              "you're logged in with. Cookies are sent only with your download "
-              'and never stored on the server.',
+              'For private posts (Instagram, X, Facebook), we reuse your '
+              'existing browser login. Auto-detect tries each installed browser '
+              'and uses the first with cookies for the site. Cookies are sent '
+              'only with your download and never stored on the server.',
               style: Theme.of(context).textTheme.bodySmall,
             ),
           ],
